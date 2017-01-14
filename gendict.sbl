@@ -1,0 +1,137 @@
+*n This software is licensed under the MIT License, contained in the file LICENSE.
+
+* Copyright (c) 2016 dave shields
+
+	define('tileset()s,n')				:(tileset.end)
+
+* 	Initialize set of tiles, ignoring the 'blank' tiles for now.
+
+tileset
+	s = 'a 9 b 2 c 2 d 5 e 13 f 2 g 3 h 4 i 8 j 1 k 1 l 4 m 2 n 5 o 8 p 2 q 1 r 6 s 5 t 7 u 4 v 2 w 2 x 1 y 2 z 1 '
+	tileset =
+tileset.1
+	s break(' ') . c ' ' break(' ') . n ' ' =	:f(return)
+	tileset = tileset dupl(c,n)			:(tileset.1)
+tileset.end
+
+*	Main program.
+
+*	Read enable1.txt word list, eliminate words that can't be formed from initial tileset, sort the list
+*	of words first by length, and then alphabetically withing words of the same length. Also, mark 
+*	plurals by adding '+' at the end of a word that has a plural. (Almost one third of the words in the
+*	list are plurals.)
+
+*	Eliminate words that can't be constructed from the initial tileset; for example, words with two z's, since
+*	the tileset only has one z.
+
+	&anchor = &trim = 1
+*	&dump = 3
+
+	words = table(100000)
+	count = array(15)
+	tiles = tileset()
+	have = table(26)
+init.1
+	tiles len(1) . c =				:f(init.2)
+	have[c] = have[c] + 1				:(init.1)
+init.2
+
+	words = table(10000)
+
+*	wwf is list of words not in enable1.txt word list but known to be accepted as valid by wwf.
+
+	wwf = 'qi brr zen zep marie ' 
+
+wwf
+	wwf break(' ') . w ' ' =			:f(wwf.done)
+	output = 'wwf extension ' w
+	words[w] = 1					:(wwf)
+wwf.done
+
+*	Read in the enable list and add its words to the dictionary
+
+	input(.ifile,2,'../enable1.txt')
+read
+	word = ifile					:f(read.done)
+	words[word] = 1
+	n = size(word)
+	gt(n,15)					:s(read)
+	count[n] = count[n] + 1				:(read)
+read.done
+	wara = sort(words)
+
+	output(.ofile,3,'dict.txt')
+
+*	Loop over dictionary.
+*	We skip over words that can't be build from the initial tileset; for example, any word with two z's,
+*	since the tileset has only one z. We intentionally ignore the use of blank tiles at this time.
+*	We also detect plural words convert to a more compact form.
+
+	plurals = table(10000)
+
+word.next
+	word = wara[i = i + 1,1]				:f(word.done)
+	ndict = ndict + 1
+	this = table()
+	s = word
+word.char
+	s len(1) . c =					:f(word.out)
+	this[c] = this[c] + 1
+	le(this[c],have[c])				:s(word.char)
+
+*	skip if have more instances of character c than in initial tileset
+*	output = 'skipping ' w ' since too many instances of ' c
+	words[word] =
+	skipped = skipped + 1				:(word.next)
+
+word.out
+	n = size(word)
+	eq(n,1)						:s(word.next)
+
+*	Look for plural word that has already been processed, and skip if found.
+
+	differ(plurals[word])				:s(word.next)
+
+	ident(words[word 's'])				:s(word.copy)
+
+*	Here if word has a plural form. Delete the current entries for both and replace with an entry 
+*	for the plural form, but ending with 'S', not 's'.
+
+	nplurals = nplurals + 1
+	plurals[word] = 1
+	plurals[word 's'] = 1
+	words[word] =
+	words[word 's'] = 
+	words[word 'S'] = 1				:(word.next);
+word.copy
+	words[word] = 1					:(word.next)
+word.done
+
+	wara = sort(words)
+	words = 
+
+*	After sorting the words table, write out the entries in order of increasing length.
+
+	i = 1
+	len = 1
+len.next
+	gt(len = len + 1,15)				:s(len.done)
+	i = 0
+write.next
+	word = wara[i = i + 1,1]			:f(len.next)
+	ne(size(word),len)				:s(write.next)
+	ofile = word					
+	nout = nout + 1
+							:(write.next)
+len.done
+	
+	output = 'count' lpad(ci = ci + 1, 3)  ' ' lpad(count[ci],6)	:s(len.done)
+
+	output =
+
+	output = rpad('dictionary entries read',30,'.')		 lpad(ndict,7)
+	output = rpad('unusable words',30,'.') 			 lpad(skipped,7)
+	output = rpad('plural words',30,'.') 			 lpad(nplurals,7)
+	output = rpad('dictionary entries written',30,'.') 	 lpad(nout,7)
+	endfile(3)
+end

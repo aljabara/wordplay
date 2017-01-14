@@ -1,0 +1,98 @@
+
+* This software is licensed under the MIT License, contained in the file LICENSE.
+
+* Copyright (c) 2016 dave shields
+
+*	Write out all permutations of up to seven digits, including all permutations of substrings.
+
+-include "fribble.sbl"
+
+
+	define('permgen(s,k)c,n,i,dist,t')			:(permgen.end)
+
+*	Perm(s,d) returns all the permutations from string s
+*	with length k, as a list of words separated by spaces.
+
+permgen
+*	build perm as list of entries separated by space. Will
+*	eliminate extra space at the end before returning.
+
+permgen.dist.1
+	n = +size(s)
+	eq(k,0)							:s(return)
+	gt(k,1)							:s(permgen.n) 
+
+*	here for permutations length one, which consists of
+*	the letters in s, separated by spaces.
+*	Here also we avoid adding duplicate characters
+
+permgen.1	
+	c = substr(s,i = i + 1,1)				:f(return)
+*	output = permgen
+	permgen = append(permgen, c)				:(permgen.1)
+
+permgen.n
+
+*	Here if two or more characters in the string. 
+*	For each distinct character, the permutations
+*	of k items can be found by find the permutations
+*	of k-1 items in the string with c removed.
+
+permgen.n.1
+	gt(i = i + 1,n)						:s(return)
+	c = substr(s,i,1)
+
+*	This optimization in next line isn't working, so skip for now
+*	skip if have already generated permutations starting with this letter
+
+*	done break(c)						:s(permgen.n.1)
+
+*	Compute permutations starting with c, by recursively computing the permutations of all the letters
+*	that follow c, and then prefixing each permutation in the resulting list with c.
+  
+*	permgen = append(permgen,prefix(permgen(less(s,c),k - 1),c)) 
+	pq = permgen(less(s,c),k - 1)
+	permgen = append(permgen,prefix(pq,c)) 
+*	done = done c
+								:(permgen.n.1)
+permgen.end
+
+	&anchor = &trim = 1
+*	&dump = 3
+	digits = '123456789'
+	n = 0  
+
+	output(.ofile,2,'perm.txt')
+
+main.1
+
+*	Start permutations of n digits.
+	total = 0
+
+	gt(n = n + 1, 7)					:s(done)
+	k = 0
+main.2
+	gt(k = k + 1,n)						:s(main.1)
+	nperms = nperms + 1
+
+*	Compute permutations of n digits taken k at a time.
+	pip = permgen(substr(digits,1,n),k) ' ' 
+	count = wordcount(pip)
+	output =  n '?' k ' ' count
+	headers = headers + count
+	ofile =  n '?' k ' ' count
+	nout = 0
+main.3
+	pip break(' ') . w ' ' =				:f(main.4)
+	ofile = w						
+	nout = nout + 1
+								:(main.3)
+main.4
+	eq(count,nout)						:s(main.2)
+	output = 'error counts wrong ' nout ' ' count
+done
+	output = lpad('permutations',20) ' '	nperms
+	output = lpad('headers',20)	 ' '	headers
+	output = lpad('total',20) ' ' nperms + headers
+end
+	

@@ -1,0 +1,580 @@
+
+
+* Copyright (c) 2016 dave shields
+
+*	Global Variables
+
+*	Here are the global variables. Each has a name starting with 'g.' Their initial value is set in the
+*	procedure *init()*.
+
+*	A play is a sequence of one or more cells, represented as an array.  The cells are ordered
+*	from left to right for a horizontal play, top to bottom for a vertical play.
+
+
+*	g.board, array('15,15'), the playing board. Each entry is blank (' ') for unplayed cell, or is the letter played.
+
+*	g.bonus.lines,array(30), is the array of lines corresponding to g.bonus
+
+*	g.dict, array(15), is an array of hashtables  that are non-null for words in the dictionary.
+
+*	g.empty.board is a copy of the initial g.board (a board with no cells occupied).
+
+*	g.found counts number of valid moves that were found.
+
+*	g.maxmoves, maximum number of moves.
+
+	g.maxmoves = 60
+	
+*	g.lines, array(30), is the array of the lines defined by the rows and columns in the board. 
+
+*	A move is a sequence of empty cells in a row or column such that at least one cell in the sequence 
+*	is adjacent to an already occupied cell:
+*		*id*	 gives the line number, in the range 1..30;
+*		*count*	 is the number of free cells covered by this move;
+*		*free*	 is an array of dimension *count* giving the empty cells to be filled by this move;
+*		*text*	 is the string of tiles of the move; and
+*		*points* is the number of points won by playing this move.
+
+*	A player is represented by
+
+	data('player(name,rack,limit,fribble,moves,total,thirty,highest)')
+
+*	where
+*		*name* 	is the player's name
+*		*rack* 	is the player's rack
+*		*limit*	if not null, limits the player to playing *limit* tiles at a time
+*		*fribble* if not null, requests that fribble make the moves
+*		*score*	is the player's current score
+*		*moves*	counts the number of moves made by the player
+*		*thirty* is number of moves with scores of 30 or more points.
+*		*highest* is the player's highest move score.
+*		*total*	is the players total score
+
+*	There are three kinds of players.
+
+	player.frible = 1	;* fribble playing on its own
+	player.self   = 2	;* you playing against fribble, managed by fribble.
+	player.team   = 3	;* you are fribble are playing as a team against another player.
+
+*	g.one and g.two are the players. 
+
+*	g.bonus,array(15,15) gives the bonus values for the squares on the board:
+*		1	for the value of the letter itself,
+*		2	for double letter,
+*		3	for triple letter, 
+*		4	for double word, and
+*		5	for triple word.
+
+	data('move(id,count,free,text,points,perm,fid)')
+
+*	A paired line consists of a line number and an associated line. It is used when it is necessary
+*	to pass a line of text to a procedure along with line number from where it was derived.
+
+		data('pair(num, line)')
+
+*	g.turn, the number of the current turn
+*	g.lastmove, the turn when the last move was made.
+
+	g.turn = g.lastmove = 0
+
+*	g.permutations, a table of the permutations of n=1..7 things taken 1..k at a time.
+*	For example, g.perms['7?3'] is permutations of 1..7 taken 3 at a time, as a string with
+*	entries separated by a space.
+
+*	g.permutations.count, a table giving the number of permutations of for a given *n* and *k*.
+
+*	g.rack, a string containing the current rack. Plays are made using the characters from the rack.
+
+*	g.random_var is used by random() to compute the next pseudo-random value.
+*	Gimpel uses integer here, but need to have real.
+
+	g.random_var = 1
+
+*	g.showscore is used to enable tracing of scoring by setting it to nonzero value
+
+	g.showscore = 1
+	g.showscore = 
+
+*	g.tiles, a string containing all the characters in the initial bag of characters.
+
+*	g.trace, if not null, begin tracing at the start of move g.trace.
+
+	g.trace =
+
+*	g.tracing, set nonzero when tracing initiated by *g.trace* begins.
+
+*	g.used, array('15,15') tracks the cells in the board that have been used in a move
+*	A move made after the first move must have at least tile played in a square adjacent to
+*	one that has been used in a prior move.
+
+*	g.used.lines, array(30), is the array of lines defined by the rows and columns of the used grid.
+
+*	g.value, a map from characters to the tile value of that character.
+
+
+	define('main()name,one,two')	:(main.end)
+
+*	Main program.
+
+*MAIN*
+main
+	&stlimit = -1
+	&anchor = &trim = 1
+
+main.end
+
+*	Utility functions
+
+	define('init(dictfile,skip,external)c,i,j,s,t')		:(init.end)
+
+*	Initialize global variables.
+
+*INIT*
+init
+
+	init.main(dictfile,skip)
+
+*	Free up code for initializers now that no longer needed.
+
+	init.bonus = init.main = init.dict = init.tileset = init.value = 
+			
+*	If *external* is not null, then another program is calling init to make use of its
+*	functions, so return. Otherwise, call the *main()* function to play a match. 
+
+
+	differ(external)				:s(return)
+	main()						:(end)
+init.end
+
+	define('init.main(dictfile,skip)c,i,j,s,t')	:(init.main.end)
+
+*	Initialize global variables.
+
+init.main
+	g.dict = array(15)
+	g.board = array('15,15',' ')
+	g.empty.board = copy(g.board)
+	g.lines = lines(g.board)
+
+	g.used = array('15,15',' ')
+	g.used.lines = lines(g.used)
+
+	init.bonus()
+
+*	Initialze permutation map.
+
+	init.perm('perm.txt')
+
+	init.tileset()
+	shuffle();* shuffle the tileset
+
+	init.value()
+
+	init.dict(dictfile,skip)
+							:(return)
+init.main.end
+
+	define('init.bonus()s,row,col,b,c')		:(init.bonus.end)
+
+*	Initialize the bonus squares for the 15x15 grid: 
+*		1 for the value of the letter,
+*		2 for double letter,
+*		3 for triple letter,
+*		4 for double word, and
+*		5 for triple word.
+
+*INIT.BONUS*
+init.bonus
+	g.bonus = array('15,15',+1)
+	s = 	'5 0104 3 0107 3 0109 5 0112 2 0203 4 0206 4 0210 2 0213 '
+.		'2 0302 2 0305 2 0311 2 0314 5 0401 3 0404 4 0408 3 0412 4 0415 '
+.		'2 0503 2 0507 2 0509 2 0513 4 0602 3 0606 3 0610 4 0614 '
+.		'3 0701 2 0705 2 0711 4 0715 4 0804 4 0812 3 0901 2 0905 2 0911 3 0915 '
+.		'4 1002 3 1006 3 1010 4 1014 2 1103 2 1107 2 1109 2 1113 '
+.		'5 1201 3 1204 4 1208 3 1212 5 1215 2 1302 2 1305 2 1311 2 1314 '
+.		'5 1403 4 1406 4 1410 2 1413 5 1504 3 1507 3 1509 5 1512 '
+
+init.bonus.1
+	s len(1) . b ' ' len(2) . row len(2) . col ' ' =	:f(init.bonus.next)
+	g.bonus[+row,+col] = +b					:(init.bonus.1)
+init.bonus.next
+	g.bonus.lines = lines(g.bonus)				:(return)
+init.bonus.end
+
+	define('init.dict(filename,skip)file,i,n,w,s')		:(init.dict.end)
+
+*	Initialize the global dictionary g.dict.
+
+*INIT.DICT*
+init.dict
+
+*	Set hash table sizes according to output of /study/gendict.sbl
+
+	s  = '1 100 1000 4000 9000 15000 23000 28000 25000 20000 15000 11000 8000 5000 3000 '
+init.dict.tbl
+	gt(i = i + 1,15)				:s(init.dict.tbl.1)
+	s break(' ') . n ' ' = 
+	g.dict[i] = table(+n)				:(init.dict.tbl)
+init.dict.tbl.1
+	i = 0
+
+
+*	Read in a dictionary from a specified file, with one word per line. If 'skip'
+*	is non-zero then that number of lines are skipped before adding the next word.
+*	This assists the use of smaller dictionaries for testing.
+
+	filename = ident(filename) 'dict.txt'
+	skip = (ident(skip) +1, +skip)
+
+	input(.file,3,filename)				:s(init.dict.in)
+	output = 'unable to open input file ' filename	:(freturn)
+	n = 0
+init.dict.in
+	w = file					:f(init.dict.done)
+	gt(size(w),15)					:s(init.dict.in)
+
+*	Process plural words, indicated by 'S' at end
+
+	differ(substr(w,size(w),1),'S')			:s(init.dict.w)
+	w = substr(w,1,size(w) - 1)
+	g.dict[size(w)][w] = +1
+	g.dict[size(w) + 1][w 's'] = +1			:(init.dict.in)
+init.dict.w
+	g.dict[size(w)][w] = +1
+	eq(skip,1)					:s(init.dict.in)
+*	here want to skip over entries in the dictionary (for testing)
+	n = skip
+init.dict.skip
+	w = file					:f(init.dict.done)
+	gt(n = n - 1,0)					:s(init.dict.skip)f(init.dict.in)
+init.dict.done
+	endfile(3)					:(return)
+init.dict.end
+
+	define('init.perm(filename)line,ifile,n,k,lines,nread')	:(init.perm.end)
+
+*	Initialize the list of possible permutations from a file.
+
+*INIT.PERM*
+init.perm
+	g.permutations = table(7)
+	g.permutations.count = table(100)
+	input(.ifile,4, filename)			:s(init.perm.next)
+	output = 'unable to open permutation file ' filename 	:(freturn)
+init.perm.next
+	line = ifile					:f(init.perm.done)
+	line break('?') . n '?' break(' ') . k ' ' rem . count :f(init.perm.err)
+	g.permutations.count[n '?' k] = count
+	ara = array(count)
+	ai = 0
+init.perm.array
+	ara[ai = ai + 1] = ifile			:s(init.perm.array)
+	g.permutations[n '?' k] = ara			:(init.perm.next)
+init.perm.done
+	endfile(4)					:(return)
+init.perm.err
+	output = 'init.perm error, line ' lines '  '  line :(freturn)
+init.perm.end
+
+	define('init.tileset()ch,n,s')			:(init.tileset.end)
+
+* 	Initialize set of tiles, ignoring the 'blank' tiles for now.
+*	Initialize value map from letters to value, ignoring ' ' for now
+
+*INIT.TILESET*
+init.tileset
+	s = 'a 9 b 2 c 2 d 5 e 13 f 2 g 3 h 4 i 8 j 1 k 1 l 4 m 2 n 5 o 8 p 2 q 1 r 6 s 5 t 7 u 4 v 2 w 2 x 1 y 2 z 1 '
+	g.tiles =
+init.tileset.ch
+	s break(' ') . ch ' ' break(' ') . n ' ' =	:f(return)
+	g.tiles = g.tiles dupl(ch,n)			:(init.tileset.ch)
+init.tileset.end
+
+	define('init.value()s,c')			:(init.value.end)
+*INIT.VALUE*
+init.value
+	g.value = table(52)
+	s = &lcase &ucase
+
+*	Assume value of a tile is one, and correct that below.
+
+init.value.next
+*	assume value is 1
+	s len(1) . c =					:f(init.value.letters)
+	g.value[c] = +1					:(init.value.next)
+
+init.value.letters
+	s = 
+.	'b 4 c 4 d 2 f 4 g 3 h 3 j 10 k 5 l 2 m 4 n 2 p 4 q 10 u 2 v 5 w 4 x 8 y 3 z 10 '
+.	'B 4 C 4 D 2 F 4 G 3 H 3 J 10 K 5 L 2 M 4 N 2 P 4 Q 10 U 2 V 5 W 4 X 8 Y 3 Z 10 '
+init.value.update
+*	update assumptions for letters with value greater than one.
+	s break(' ') . c ' ' break(' ') . v ' ' =	:f(return)
+	g.value[c] = +v					:(init.value.update)
+init.value.end
+
+	define('append(str,w,ch)')				:(append.end)
+
+*	Append word *w* to string *str*, prefixing with *ch* if *str* is not null, using space if *ch* is null.
+
+*APPEND*
+append
+*	ident(w)	:s(append.fail)
+	ch = ident(ch) ' '
+	append = ident(str) w				:s(return)
+	append = str ch w				:(return)
+append.fail
+	 output = 'null ch to append ' w :(end)
+append.end
+
+
+	define('checkline(line)iline,word')			:(checkline.end)
+
+*	Succeeds if all the words in the line are in the dictionary, fails otherwise.
+
+*CHECKLINE*
+checkline
+	count.checkline = count.checkline + 1
+	line span(' ') =
+	empty(line)					:s(return)
+	iline = line
+	line = line ' ';* to simplify breaking out words.
+checkline.1
+	line span(' ') =
+	ident(iline)					:s(checkline.done)
+	line break(' ')  . word ' ' =			:f(checkline.done);* if line exhausted
+	eq(size(word),1)				:s(checkline.1)
+	checkword(word)					:f(checkline.failed)s(checkline.1)
+
+	output = ne(g.tracing) 'checkline VALID<' iline '>'  :(checkline.1)
+
+	checkword(word)					:s(checkline.1)
+
+checkline.failed
+*	output = ne(g.tracing) 'checkline INVALID<' iline '>' 
+							:(freturn)
+checkline.done
+*	output = ne(g.tracing) 'checkline VALID ' iline
+							:(return)
+checkline.end
+
+	define('checkword(w)')				:(checkword.end)
+
+*	Succeeds if w is in the global dictionary, fails otherwise.
+
+*CHECKWORD*0
+checkword
+	eq(size(w),1)					:s(return)
+	count.checkword = count.checkword + 1
+	differ(g.dict[size(w)][w])			:f(freturn)s(return)
+*	differ(g.dict[size(w)][w])			:f(freturn)s(checkword.good)
+checkword.bad
+	output = 'invalid blank at start of checkword ' w :(end)
+checkword.good
+*	output =  'checkword VALID ' w			
+							:(return)
+checkword.end
+
+*INSERT*
+insert
+	count.insert = count.insert + 1
+	f = free(move)
+	c = count(move)
+	ne(f[c] - f[1], count - 1)			:s(insert.chars)
+
+*	Here if cells are contiguous. Insert text after part before it, and before part after it.
+
+	insert = substr(line, 1, f[1] - 1) text(move) substr(line, f[c] + 1)
+	output = ne(size(line),15) 'insert failure ' line		:s(end)
+	count.insert.contig = count.insert.contig + 1
+							:(return)
+insert.chars
+
+*	Here if cells not contiguous. Unpack the line, insert the move text, and pack it back up.
+
+	count.insert.split = count.insert.split + 1
+	insert = unpack(line)
+	utext = ucase(text(move))
+insert.ch
+	gt(i = i + 1,count(move))			:s(insert.done)
+	insert[free(move)[i]] = substr(utext,i,1)	:(insert.ch)
+insert.done
+	insert = pack(insert)				:(return)
+insert.end
+
+	define('lcase(s)')				:(lcase.end)
+
+*	Convert argument to lower case.
+
+*LCASE*
+lcase
+	lcase = replace(s,&ucase,&lcase)		:(return)
+lcase.end
+	
+	define('less(str,sub)before,after')		:(less.end)
+
+*	Less removes the first instance of each character in *sub* from *str*, 
+*	where *sub* is a substring of *str*.
+
+less
+	ident(str)					:s(return)
+	less = str
+less.ch
+	sub len(1) . ch =				:f(return)	
+	less break(ch) . before  ch rem . after
+	less = before after				:(less.ch)
+less.end
+
+	define('prefix(str,pre)word')			:(prefix.end)
+*PREFIX*
+prefix
+
+*	Prefix takes a list of space-separated words str and prefixes each
+*	with the string pre.
+
+	str = str ' ';* so each word followed by space
+prefix.1
+	str break(' ') . word span(' ')  =		:f(return)
+	prefixcount = prefixcount + 1
+	prefix = append(prefix, pre word,'A')		:(prefix.1)
+prefix.end
+
+	define('random(n)')				:(random.end)
+
+*	Return integer uniformly distributed in 1,2,...,n. 
+*	If n=0 returns real uniformly distributed in the interval [0,1].
+*	The Algorithm is based on that in section 16.1 of "Algorithms in SNOBOL4,"
+*	James F. Gimpel, John Wiley and Sons, 1976.
+
+*RANDOM*
+random	
+	g.random_var = remdr(g.random_var * 4676, 414971)
+*	random  = g.random_var / convert(414971,'float')
+	random  = g.random_var / 414971.0
+	random = ne(n) convert(random * n,'integer') + 1
+							:(return)
+random.end
+
+	define('row(num,pos)')				:(row.end)
+
+*	Returns row corresponding to position *pos* in line *num*.
+
+*ROW*
+row
+	row = ((le(num,15) num, pos))		:(return)
+row.end
+
+	define('shuffle()tiles,n,r1,r2,ch')		:(shuffle.end)
+
+*	Shuffle the remaining tiles by randomly swapping two tiles several times.
+
+*SHUFFLE*
+shuffle	
+	tiles = unpack(g.tiles)
+	n = size(g.tiles)  * 2
+	lt(n,5)						:s(shuffle.done)
+shuffle.next
+	le(n = n - 1)					:s(shuffle.done)
+	r1 = random(n); r2 = random(n)
+	eq(r1,r2)					:s(shuffle.next)
+	ch = tiles[r1]
+	tiles[r1] = tiles[r2]	
+	tiles[r2] = ch					:(shuffle.next)
+shuffle.done
+	g.tiles = pack(tiles)
+							:(return)
+shuffle.end
+
+	define('spaces(line)n')				:(spaces.end)
+
+*	Count number of spaces in line.
+
+*SPACES*
+spaces
+	line len(1) . c =				:f(return)
+	spaces = ident(c,' ') spaces + 1		:(spaces)
+spaces.end
+
+
+	define('subarray(ara,start,len)i')		:(subarray.end)
+
+*	Like substr, but returns the sub-array of *ara* starting at element *start* and
+*	consisting of *len* elements
+
+*SUBARRAY*
+subarray
+	subarray = array(len)
+subarray.1
+	gt(i = i + 1,len)				:s(return)
+	subarray[i] = copy(ara[start + i - 1])		:(subarray.1)		
+subarray.end
+
+	define('swap(tiles,n)')				:(swap.end)
+
+*	Swap *n* files from the first *n* characters in *tiles*. If fewer than *n* tiles remain,
+*	set *n* to the size of the tileset.
+
+*SWAP*
+swap	
+	n = gt(n,size(tiles)) size(tiles)
+	n = gt(n,size(g.tiles)) size(g.tiles)
+	eq(n)						:s(freturn)
+swap.next
+	swap = substr(g.tiles,1,n)
+	g.tiles = substr(g.tiles,n + 1)  substr(tiles,1,n)
+							:(return)
+swap.end
+
+	define('take(n)')				:(take.end)
+
+*	Take *n* tiles from the tileset, unless there are fewer than *n* tiles left,
+*	in which case return the reamining tiles.
+
+*TAKE*
+take
+	n = gt(n,size(g.tiles)) size(g.tiles)
+	take = order(substr(g.tiles,1,n))
+	g.tiles = substr(g.tiles, n + 1)
+*	output = 'take<' take '> g.tiles<' g.tiles '>'
+							:(return)
+take.end
+
+	define('wordcount(s)i,w')			:(wordcount.end)
+
+*	Return number of words in s, fail if no words
+
+*WORDCOUNT*
+wordcount
+	s break(' ')					:f(freturn)
+	
+	wordcount = 0
+wordcount.1
+	s break(' ') . w span(' ') =			:f(return)
+	wordcount = +wordcount + 1			:(wordcount.1)
+wordcount.end
+
+	define('words(s)n,w,pos,i')			:(words.end)
+
+*	Return array of the words in s, fail if no words.
+*	The first entry for an array is the starting index,
+*	the second entry is the word itself.
+
+*WORDS*
+words
+	n = wordcount(s)				:f(freturn)
+	s = s ' '
+	words = table(n)
+	pos = 1	
+	s span(' ') . w =				:f(words.1)
+	pos = size(w) + 1;* point to start of first word
+words.1
+	s break(' ') . w ' ' = ' ' 			:f(words.done)
+	words[pos] = w					
+	i = i + 1	
+	gt(i,n)						:s(words.done)
+	
+	pos = pos + size(w) + 1;* set to start of next word
+							:(words.1)
+words.done
+	words = convert(words,'array')			:(return)
+words.end
