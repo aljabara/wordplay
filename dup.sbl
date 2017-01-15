@@ -1,0 +1,32 @@
+-include "util.sbl"
+	
+	init()
+
+	output = g.tiles
+
+	define('racksort(rack)ra,rb,p1,p2')			:(racksort.end)
+
+	Sort a rack of tiles.
+
+racksort
+	racksort = pack(sort(unpack(rack)))	:(return)
+racksort.end
+	
+	n = 0
+	shuffle()
+	t = g.tiles
+	tsize = size(t)
+loop
+	gt(n = n + 1, 10000 / 14)		:s(end)
+	shuffle()
+	t = g.tiles
+	i = 0
+	
+loop.i
+	gt(i = i + 1,14)			:s(loop)
+	
+	s = substr(t,1,7)
+	t = substr(t,8)
+	output = racksort(s)					:(loop.i)
+	
+end
